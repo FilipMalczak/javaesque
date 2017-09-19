@@ -1,8 +1,6 @@
 module javaesque.testing;
 
 version(unittest){
-    enum VERBOSE_TESTS = false;
-    
     import std.traits;
     import std.stdio;
     
@@ -23,9 +21,11 @@ version(unittest){
         };
     }
     
-    void testSuite(T...)(T cases) if (areCallable!T) {
+    void testSuite(string moduleName=__MODULE__, size_t suiteLine=__LINE__, T...)(T cases) if (areCallable!T) {
         import std.stdio;
+        import std.conv;
         Exception e = null;
+        writeln("Running suite from module "~moduleName~" and line "~to!string(suiteLine));
         foreach (testcase; cases){
             try {
                 testcase();

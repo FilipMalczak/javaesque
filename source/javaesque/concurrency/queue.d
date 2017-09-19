@@ -1,49 +1,47 @@
 module javaesque.concurrency.queue;
 
-import core.thread: CoreThread = Thread;
-import core.sync.mutex;
+import core.sync.rwmutex;
 import core.sync.semaphore;
 import core.sync.condition;
 
 version(unittest){
     import javaesque.concurrency.thread;
     import javaesque.testing;
+    
+    enum VERBOSE_TESTS = false;
+
 }
 
 shared class Queue(T) {
     private shared(T)[] buffer;
-    private shared Mutex putLock;
-    private shared Mutex getLock;
+    private shared ReadWriteMutex rwmutex;
     private shared Semaphore nonEmptySemaphore;
-    private shared Condition emptyCondition;
-    private shared bool closed;
-    
+
     this(){
-        putLock = cast(shared) new Mutex();
-        getLock = cast(shared) new Mutex();
+        //todo: add policy to constructor
+        rwmutex = cast(shared) new ReadWriteMutex();
         nonEmptySemaphore = cast(shared) new Semaphore();
-        emptyCondition = cast(shared) new Condition(new Mutex());
-        closed = false;
     }
     
     void put(T val){
-        synchronized(cast() putLock){
-            assert(!closed); //todo: exception
+        synchronized((cast() rwmutex).writer){
             buffer ~= cast(shared) val;
             (cast()nonEmptySemaphore).notify();
         }
     }
     
+    alias push = put;
+    
     T get(){
-        synchronized(cast() getLock){
-            (cast()nonEmptySemaphore).wait();
+        (cast()nonEmptySemaphore).wait();
+        synchronized((cast() rwmutex).reader){
             shared T result = buffer[0];
             buffer = buffer[1..$];
-            if ((cast()buffer))
-                (cast()emptyCondition).notify();
             return cast() result;
         }
     }
+    
+    alias pull = get;
 }
 
 version(unittest){
@@ -52,11 +50,11 @@ version(unittest){
     void producer(shared Queue!int queue, int minDelay, int maxDelay){
         for (int i=0; i<10; ++i){
             queue.put(i);
-            CoreThread.sleep(dur!("msecs")(uniform!"[]"(minDelay, maxDelay)));
+            Thread.sleep(dur!("msecs")(uniform!"[]"(minDelay, maxDelay)));
         }
         static if (VERBOSE_TESTS) {
             import std.stdio;
-            writeln(thisName~" finished");
+            writeln(Thread.thisThread.name~" finished");
         }
     }
     
@@ -71,12 +69,12 @@ version(unittest){
         static if (VERBOSE_TESTS) {
             import std.stdio;
             import std.conv;
-            writeln(thisName~" finished");
+            writeln(Thread.thisThread.name~" finished");
             writeln("expected: "~to!string(expected)~"; result: "~to!string(result));
         }
         checker(expected, result);
     }
-
+    
     void singleProducerCheck(int[] expected, int[] result){
         assert(expected == result);
     }
@@ -139,6 +137,59 @@ version(unittest){
         threads ~= spawn("consumer", &consumer!3, q, &multipleProducerCheck);
         foreach (thread; threads) thread.join();
     }
+    
+    void testMultipleConsumers(){
+        auto q1 = new shared Queue!int;
+        auto q2 = new shared Queue!int;
+        
+        Thread[] threads;
+        
+        Thread producer = Thread.spawn("producer", (shared Queue!int oq){
+            for (int i=0; i<20; ++i){
+                oq.push(i);
+                Thread.sleep(dur!("msecs")(uniform!"[]"(150, 200)));
+            }
+            static if (VERBOSE_TESTS) {
+                import std.stdio;
+                writeln(Thread.thisThread.name~" finished");
+            }
+        }, q1);
+        
+        auto consumerFoo = (shared Queue!int iq, shared Queue!int oq){
+            for (int i=0; i<10; ++i) {
+                oq.push(iq.pull());
+                Thread.sleep(dur!("msecs")(uniform!"[]"(150, 200)));
+            }
+            static if (VERBOSE_TESTS) {
+                import std.stdio;
+                writeln(Thread.thisThread.name~" finished");
+            }
+        };
+        
+        Thread consumer1 = Thread.spawn("consumer1", consumerFoo, q1, q2);
+        Thread consumer2 = Thread.spawn("consumer2", consumerFoo, q1, q2);
+        
+        Thread checker = Thread.spawn("checker", (shared Queue!int oq){
+            int[] result;
+            int[] expected;
+            for (int i=0; i<20; ++i){
+                expected ~= i;
+                result ~= oq.pull();
+            }
+            static if (VERBOSE_TESTS) {
+                import std.stdio;
+                import std.conv;
+                writeln(Thread.thisThread.name~" finished");
+                writeln("expected: "~to!string(expected)~"; result: "~to!string(result));
+            }
+            import std.algorithm;
+            assert(isPermutation(expected, result));
+        }, q2);
+        producer.join();
+        consumer1.join();
+        consumer2.join();
+        checker.join();
+    }
 }
 
 unittest {
@@ -148,6 +199,9 @@ unittest {
         testCase("single varying delay producer", &testSingleVaryingProducer),
         testCase("multiple no delay producers", &testMultipleNoDelayProducer),
         testCase("multiple constant delay producers", &testMultipleConstantProducer),
-        testCase("multiple varying delay producers", &testMultipleVaryingProducer)
+        testCase("multiple varying delay producers", &testMultipleVaryingProducer),
+        testCase("multiple consumers", &testMultipleConsumers)
     );
+    
+    //todo: test many consumers
 }
