@@ -41,6 +41,16 @@ shared class Queue(T) {
         }
     }
     
+    T[] drain(){
+        synchronized((cast() rwmutex).reader){
+            T[] result;
+            foreach (v; buffer)
+            result ~= cast() v;
+            buffer = cast(shared) [];
+            return result;
+        }
+    }
+    
     alias pull = get;
 }
 
@@ -201,5 +211,6 @@ unittest {
         testCase("multiple constant delay producers", &testMultipleConstantProducer),
         testCase("multiple varying delay producers", &testMultipleVaryingProducer),
         testCase("multiple consumers", &testMultipleConsumers)
+        //todo: test draining
     );
 }
