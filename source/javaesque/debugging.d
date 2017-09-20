@@ -6,7 +6,7 @@ import std.conv;
 private void impl(T...)(string mod, string foo, size_t line, T toNote){
     write(mod~"@"~to!string(line)~"\t"~foo);
     static if (T.length > 0)
-        write("\t\t"~to!string(toNote));
+        write("\t\t"~text(toNote));
     writeln();
 }
 

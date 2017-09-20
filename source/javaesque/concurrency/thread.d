@@ -9,12 +9,18 @@ import core.sync.semaphore;
 import core.sync.mutex;
 import core.thread: CoreThread = Thread;
 
+import std.traits;
+import std.variant;
+
+import javaesque.debugging;
+
 enum MAIN_THREAD_NAME = "mainThread";
 
 private string threadLocalName = MAIN_THREAD_NAME;
 
 void send(T...)(string name, T vals){
-    raw_send(locate(name), vals);
+    Tid tid = locate(name);
+    raw_send(tid, vals);
 }
 
 private alias sendToThread = send;
@@ -63,7 +69,6 @@ struct Thread {
     void send(T...)(T vals){
         sendToThread(threadName, vals);
     }
-    
     alias sleep = CoreThread.sleep;
     
     static Thread spawn(F, T...)(string name, F fn, T args) {
@@ -159,6 +164,6 @@ unittest {
         testCase("single thread scenario sending by name", &singleSpawnedSendByName),
         testCase("single thread scenario sending by struct", &singleSpawnedSendByStruct),
         testCase("single thread scenario responding by struct", &singleSpawnedSendByStruct),
-        testCase("joining", &joining),
+        testCase("joining", &joining)
     );
 }

@@ -202,6 +202,4 @@ unittest {
         testCase("multiple varying delay producers", &testMultipleVaryingProducer),
         testCase("multiple consumers", &testMultipleConsumers)
     );
-    
-    //todo: test many consumers
 }
